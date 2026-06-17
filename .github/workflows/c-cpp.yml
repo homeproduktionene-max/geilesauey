@@ -1,54 +1,53 @@
-name: Build
+name: Build C++20 (VS2022)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main" ]
-  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     strategy:
       matrix:
-        configuration: [Debug, Release]
+        configuration: [Release]
         platform: [x64]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Show files
-        shell: pwsh
-        run: |
-          Get-ChildItem -Recurse | Select-Object FullName
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
 
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v2
+    # Optional but recommended: cache NuGet packages
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.nuget/packages
+          **/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.config') }}
+        restore-keys: |
+          nuget-${{ runner.os }}-
 
-      - name: Restore NuGet packages
-        run: |
-          nuget restore src/ext-cs2-skin-changer.sln
+    - name: Restore NuGet packages
+      run: nuget restore src/ext-cs2-skin-changer.sln
 
-      - name: Build
-        run: |
-          msbuild src/ext-cs2-skin-changer.sln `
-            /p:Configuration=${{ matrix.configuration }} `
-            /p:Platform=${{ matrix.platform }} `
-            /m `
-            /v:minimal
+    - name: Build solution
+      run: |
+        msbuild src/ext-cs2-skin-changer.sln ^
+          /p:Configuration=${{ matrix.configuration }} ^
+          /p:Platform=${{ matrix.platform }} ^
+          /m
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-${{ matrix.configuration }}-${{ matrix.platform }}
-          path: |
-            **/*.exe
-            **/*.dll
-          if-no-files-found: warn
-          retention-days: 7
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ext-cs2-skin-changer-${{ matrix.platform }}-${{ matrix.configuration }}
+        path: |
+          **/x64/Release/*.exe
