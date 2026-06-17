@@ -1,23 +1,58 @@
-name: C/C++ CI
+name: Build
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # Manuell auslösbar
+  workflow_dispatch:
 
 jobs:
   build:
+    runs-on: windows-latest
 
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
+        platform: [x64]
 
     steps:
-    - uses: actions/checkout@v4
-    - name: configure
-      run: ./configure
-    - name: make
-      run: make
-    - name: make check
-      run: make check
-    - name: make distcheck
-      run: make distcheck
+      # 1. Code auschecken
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. MSBuild in den PATH bringen
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      # 3. NuGet CLI installieren (für Restore)
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      # 4. NuGet-Pakete wiederherstellen
+      #    (curl, openssl, nlohmann.json, D3DX — alles aus packages.config)
+      - name: Restore NuGet packages
+        run: |
+          nuget restore src/ext-cs2-skin-changer/ext-cs2-skin-changer.sln
+
+      # 5. Projekt bauen
+      - name: Build
+        run: |
+          msbuild src/ext-cs2-skin-changer/ext-cs2-skin-changer.sln `
+            /p:Configuration=${{ matrix.configuration }} `
+            /p:Platform=${{ matrix.platform }} `
+            /m `
+            /v:minimal
+
+      # 6. Build-Artefakt hochladen
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.configuration }}-${{ matrix.platform }}
+          # Typischer MSBuild-Ausgabepfad, ggf. anpassen
+          path: |
+            src/ext-cs2-skin-changer/x64/${{ matrix.configuration }}/*.exe
+            src/ext-cs2-skin-changer/x64/${{ matrix.configuration }}/*.dll
+          if-no-files-found: warn
+          retention-days: 7
