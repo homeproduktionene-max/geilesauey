@@ -15,39 +15,38 @@ jobs:
         platform: [x64]
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-    - name: Setup NuGet
-      uses: NuGet/setup-nuget@v2
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
 
-    # Optional but recommended: cache NuGet packages
-    - name: Cache NuGet packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.nuget/packages
-          **/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.config') }}
-        restore-keys: |
-          nuget-${{ runner.os }}-
+      # Cache NuGet packages (beschleunigt Builds)
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nuget/packages
+            **/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.config') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
-    - name: Restore NuGet packages
-      run: nuget restore src/ext-cs2-skin-changer.sln
+      # NuGet Restore
+      - name: Restore NuGet packages
+        run: nuget restore src/ext-cs2-skin-changer.sln
 
-    - name: Build solution
-      run: |
-        msbuild src/ext-cs2-skin-changer.sln ^
-          /p:Configuration=${{ matrix.configuration }} ^
-          /p:Platform=${{ matrix.platform }} ^
-          /m
+      # Build (FIX: PowerShell-safe, kein ^)
+      - name: Build solution
+        run: msbuild src/ext-cs2-skin-changer.sln /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }} /m
 
-    - name: Upload build artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ext-cs2-skin-changer-${{ matrix.platform }}-${{ matrix.configuration }}
-        path: |
-          **/x64/Release/*.exe
+      # Upload EXE artifact
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ext-cs2-skin-changer-${{ matrix.platform }}-${{ matrix.configuration }}
+          path: |
+            **/x64/Release/*.exe
