@@ -5,6 +5,10 @@ on:
     branches: [ "main", "master" ]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-2022
@@ -24,7 +28,7 @@ jobs:
       - name: Setup NuGet
         uses: NuGet/setup-nuget@v2
 
-      # Cache NuGet packages (beschleunigt Builds)
+      # NuGet Cache
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:
@@ -39,14 +43,43 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore src/ext-cs2-skin-changer.sln
 
-      # Build (FIX: PowerShell-safe, kein ^)
-      - name: Build solution
-        run: msbuild src/ext-cs2-skin-changer.sln /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }} /m
+      # OpenSSL-Pfad ermitteln (openssl-native NuGet-Paket hat keine MSBuild-Integration)
+      - name: Locate OpenSSL
+        run: |
+          $candidates = @(
+            "C:\Program Files\OpenSSL-Win64",
+            "C:\Program Files\OpenSSL",
+            "C:\OpenSSL-Win64"
+          )
+          $found = $candidates | Where-Object { Test-Path "$_\include\openssl\evp.h" } | Select-Object -First 1
+          if (-not $found) {
+            choco install openssl --yes --no-progress
+            $found = "C:\Program Files\OpenSSL-Win64"
+          }
+          echo "OPENSSL_ROOT=$found" >> $env:GITHUB_ENV
 
-      # Upload EXE artifact
+      # Build
+      - name: Build solution
+        run: |
+          msbuild src/ext-cs2-skin-changer.sln `
+            /p:Configuration=${{ matrix.configuration }} `
+            /p:Platform=${{ matrix.platform }} `
+            /p:AdditionalIncludeDirectories="$env:OPENSSL_ROOT\include" `
+            /p:AdditionalLibraryDirectories="$env:OPENSSL_ROOT\lib" `
+            /m `
+            /v:minimal
+
+      # Zeige was gebaut wurde (Debug-Hilfe)
+      - name: List build output
+        run: Get-ChildItem -Recurse -Path src -Include *.exe,*.dll | Select-Object FullName,Length
+
+      # Upload EXE + DLL
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ext-cs2-skin-changer-${{ matrix.platform }}-${{ matrix.configuration }}
           path: |
             **/x64/Release/*.exe
+            **/x64/Release/*.dll
+          if-no-files-found: error
+          retention-days: 14
